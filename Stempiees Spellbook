@@ -1,0 +1,271 @@
+local LP = game:GetService("Players").LocalPlayer
+local mouse = LP:GetMouse()
+local WS = game:GetService("Workspace")
+
+local presets = {
+    Vector3.new(-2431.18, -18.36, 3933.24),
+    Vector3.new(-2423.00, -18.48, 3933.31),
+    Vector3.new(-2431.24, -18.72, 3907.39),
+    Vector3.new(-2423.06, -18.48, 3906.24),
+    Vector3.new(-2437.65, -18.84, 3906.91),
+    Vector3.new(-2444.63, -18.72, 3910.85),
+    Vector3.new(-2443.86, -18.92, 3928.55),
+    Vector3.new(-2437.35, -18.60, 3931.86),
+}
+
+local DROP_POS = Vector3.new(-2278.31, 6.06, 4385.85)
+local CLICK1_X, CLICK1_Y = 1176, 457
+local CLICK2_X, CLICK2_Y = 1161, 887
+
+local VK_F, VK_E = 0x46, 0x45
+local HOLD_TIME, BAG_COUNT = 4, 3
+local TP_SETTLE, BETWEEN = 0.5, 0.3
+local DROP_WAIT, SELL_WAIT = 1.0, 1.2
+local E_HOLD, CLICK_WAIT, CLICK_GAP = 0.1, 0.3, 0.3
+local MOVE_TIME, MOVE_STEPS = 0.25, 25
+local PROMPT_WAIT, RUNALL_GAP = 0.15, 0.5
+local BAG_CAM_DOWN, BAG_HOVER, SELL_HOVER = 12, 6, 0
+local JIGGLE_PX, JIGGLE_STEPS = 3, 8
+local CLICK_COUNT, CLICK_DELAY = 3, 0.15
+
+local stopRequested = false
+
+local function setCamera(down)
+    down = down or 0
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local cam
+    pcall(function() cam = WS.CurrentCamera end)
+    if not cam then return end
+    local look = root.CFrame.LookVector
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude < 0.01 then flat = Vector3.new(0, 0, -1) end
+    flat = flat.Unit
+    local camPos = root.Position - flat * 8 + Vector3.new(0, 4 + down, 0)
+    local target = root.Position - Vector3.new(0, down * 0.8, 0)
+    pcall(function() cam.lookAt(camPos, target) end)
+end
+
+local function teleport(pos, settle, hover)
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local target = CFrame.new(pos.X, pos.Y + (hover or 0), pos.Z)
+    local ok = pcall(function() root.CFrame = target end)
+    if not ok then return false end
+    local start = tick()
+    while tick() - start < (settle or TP_SETTLE) do
+        pcall(function()
+            root.CFrame = target
+            root.Velocity = Vector3.new(0, 0, 0)
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end)
+        wait()
+    end
+    return true
+end
+
+local function smoothMove(tx, ty)
+    local sx, sy = mouse.X, mouse.Y
+    for i = 1, MOVE_STEPS do
+        local a = i / MOVE_STEPS
+        mousemoveabs(math.floor(sx + (tx - sx) * a), math.floor(sy + (ty - sy) * a))
+        wait(MOVE_TIME / MOVE_STEPS)
+    end
+    mousemoveabs(tx, ty)
+end
+
+local function jiggleClick(tx, ty)
+    for i = 1, JIGGLE_STEPS do
+        mousemoveabs(tx + math.random(-JIGGLE_PX, JIGGLE_PX), ty + math.random(-JIGGLE_PX, JIGGLE_PX))
+        wait(0.02)
+    end
+    mousemoveabs(tx, ty)
+    wait(0.05)
+    for i = 1, CLICK_COUNT do
+        mouse1click()
+        wait(CLICK_DELAY)
+    end
+end
+
+local function doLocation(pos)
+    if not teleport(pos, TP_SETTLE, BAG_HOVER) then return end
+    wait(0.2)
+    setCamera(BAG_CAM_DOWN)
+    wait(PROMPT_WAIT)
+    setCamera(BAG_CAM_DOWN)
+    wait(PROMPT_WAIT)
+    for i = 1, BAG_COUNT do
+        if stopRequested then return end
+        keypress(VK_F)
+        wait(HOLD_TIME)
+        keyrelease(VK_F)
+        if i < BAG_COUNT then wait(BETWEEN) end
+    end
+    if stopRequested then return end
+    setCamera(0)
+    wait(PROMPT_WAIT)
+    teleport(DROP_POS, DROP_WAIT, SELL_HOVER)
+    if stopRequested then return end
+    wait(SELL_WAIT)
+    keypress(VK_E)
+    wait(E_HOLD)
+    keyrelease(VK_E)
+    wait(CLICK_WAIT)
+    smoothMove(CLICK1_X, CLICK1_Y)
+    wait(0.05)
+    jiggleClick(CLICK1_X, CLICK1_Y)
+    if stopRequested then return end
+    wait(CLICK_GAP)
+    smoothMove(CLICK2_X, CLICK2_Y)
+    wait(0.05)
+    jiggleClick(CLICK2_X, CLICK2_Y)
+end
+
+local busy = false
+
+local function runAll()
+    if busy then return end
+    busy = true
+    stopRequested = false
+    pcall(function()
+        for i, pos in ipairs(presets) do
+            if stopRequested then break end
+            doLocation(pos)
+            if i < #presets and not stopRequested then wait(RUNALL_GAP) end
+        end
+    end)
+    busy = false
+    stopRequested = false
+    warn("Stopped")
+end
+
+local PX, PY    = 20, 120
+local PANEL_W   = 240
+local PANEL_H   = 92
+local PAD       = 12
+local BTN_H     = 40
+local BTN_GAP   = 6
+local STOP_W    = 70
+
+local COL_PANEL  = Color3.fromRGB(18, 14, 26)
+local COL_ACCENT = Color3.fromRGB(170, 100, 230)
+local COL_ACCENT2= Color3.fromRGB(220, 140, 255)
+local COL_TEXT   = Color3.fromRGB(240, 235, 250)
+local COL_BTN    = Color3.fromRGB(38, 26, 58)
+local COL_BTN_HV = Color3.fromRGB(65, 42, 100)
+local COL_STOP   = Color3.fromRGB(70, 25, 35)
+local COL_STOP_HV= Color3.fromRGB(130, 45, 60)
+local COL_STOP_T = Color3.fromRGB(255, 180, 180)
+
+local shadow = Drawing.new("Square")
+shadow.Size = Vector2.new(PANEL_W, PANEL_H)
+shadow.Position = Vector2.new(PX + 3, PY + 3)
+shadow.Color = Color3.fromRGB(0, 0, 0)
+shadow.Filled = true
+shadow.Transparency = 0.55
+shadow.ZIndex = 1
+
+local panel = Drawing.new("Square")
+panel.Size = Vector2.new(PANEL_W, PANEL_H)
+panel.Position = Vector2.new(PX, PY)
+panel.Color = COL_PANEL
+panel.Filled = true
+panel.Transparency = 0.08
+panel.ZIndex = 2
+
+local accent = Drawing.new("Square")
+accent.Size = Vector2.new(PANEL_W, 2)
+accent.Position = Vector2.new(PX, PY)
+accent.Color = COL_ACCENT
+accent.Filled = true
+accent.Transparency = 0
+accent.ZIndex = 3
+
+local title = Drawing.new("Text")
+title.Text = "Stempiee's Spellbook"
+title.Position = Vector2.new(PX + PAD, PY + 14)
+title.Size = 18
+title.Color = COL_TEXT
+title.Outline = true
+title.ZIndex = 4
+
+local btnY = PY + PANEL_H - BTN_H - PAD
+local runW  = PANEL_W - PAD * 2 - STOP_W - BTN_GAP
+
+local runBG = Drawing.new("Square")
+runBG.Size = Vector2.new(runW, BTN_H)
+runBG.Position = Vector2.new(PX + PAD, btnY)
+runBG.Color = COL_BTN
+runBG.Filled = true
+runBG.Transparency = 0.05
+runBG.ZIndex = 3
+
+local runStripe = Drawing.new("Square")
+runStripe.Size = Vector2.new(3, BTN_H)
+runStripe.Position = Vector2.new(PX + PAD, btnY)
+runStripe.Color = COL_ACCENT
+runStripe.Filled = true
+runStripe.Transparency = 0
+runStripe.ZIndex = 4
+
+local runLbl = Drawing.new("Text")
+runLbl.Text = "Empty Vault"
+runLbl.Position = Vector2.new(PX + PAD + 14, btnY + 10)
+runLbl.Size = 16
+runLbl.Color = COL_TEXT
+runLbl.Outline = true
+runLbl.ZIndex = 5
+
+local stopX = PX + PAD + runW + BTN_GAP
+local stopBG = Drawing.new("Square")
+stopBG.Size = Vector2.new(STOP_W, BTN_H)
+stopBG.Position = Vector2.new(stopX, btnY)
+stopBG.Color = COL_STOP
+stopBG.Filled = true
+stopBG.Transparency = 0.05
+stopBG.ZIndex = 3
+
+local stopLbl = Drawing.new("Text")
+stopLbl.Text = "Stop"
+stopLbl.Position = Vector2.new(stopX + 15, btnY + 10)
+stopLbl.Size = 16
+stopLbl.Color = COL_STOP_T
+stopLbl.Outline = true
+stopLbl.ZIndex = 5
+
+local runX1, runY1 = PX + PAD, btnY
+local runX2, runY2 = runX1 + runW, btnY + BTN_H
+local stopX1, stopY1 = stopX, btnY
+local stopX2, stopY2 = stopX + STOP_W, btnY + BTN_H
+
+local runHovered, stopHovered = false, false
+local wasDown = false
+
+task.spawn(function()
+    while true do
+        local mx, my = mouse.X, mouse.Y
+        local hRun  = (mx >= runX1 and mx <= runX2 and my >= runY1 and my <= runY2)
+        local hStop = (mx >= stopX1 and mx <= stopX2 and my >= stopY1 and my <= stopY2)
+
+        if hRun ~= runHovered then
+            runHovered = hRun
+            runBG.Color     = hRun and COL_BTN_HV or COL_BTN
+            runStripe.Color = hRun and COL_ACCENT2 or COL_ACCENT
+            runLbl.Color    = hRun and COL_ACCENT2 or COL_TEXT
+        end
+        if hStop ~= stopHovered then
+            stopHovered = hStop
+            stopBG.Color  = hStop and COL_STOP_HV or COL_STOP
+            stopLbl.Color = hStop and Color3.fromRGB(255, 220, 220) or COL_STOP_T
+        end
+
+        local down = ismouse1pressed()
+        if down and not wasDown then
+            if hRun then task.spawn(runAll) end
+            if hStop then stopRequested = true end
+        end
+        wasDown = down
+        wait()
+    end
+end)
+
