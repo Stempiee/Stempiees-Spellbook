@@ -19,7 +19,7 @@ local CLICK2_X, CLICK2_Y = 1161, 887
 
 local VK_F, VK_E = 0x46, 0x45
 local HOLD_TIME, BAG_COUNT = 4, 3
-local BAG_HOVER = 5            -- small buffer, stays inside the vault
+local BAG_HOVER = 5
 local BAG_PIN = 3.0
 local BAG_DESCEND = 0.8
 local GROUND_PIN = 0.5
