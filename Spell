@@ -19,12 +19,16 @@ local CLICK2_X, CLICK2_Y = 1161, 887
 
 local VK_F, VK_E = 0x46, 0x45
 local HOLD_TIME, BAG_COUNT = 4, 3
-local TP_SETTLE, BETWEEN = 0.5, 0.3
-local DROP_WAIT, SELL_WAIT = 1.0, 1.2
+local BAG_HOVER = 5            -- small buffer, stays inside the vault
+local BAG_PIN = 3.0
+local BAG_DESCEND = 0.8
+local GROUND_PIN = 0.5
+local REPIN = 0.2
+local BETWEEN, DROP_WAIT, SELL_WAIT = 0.3, 1.0, 1.2
 local E_HOLD, CLICK_WAIT, CLICK_GAP = 0.1, 0.3, 0.3
 local MOVE_TIME, MOVE_STEPS = 0.25, 25
 local PROMPT_WAIT, RUNALL_GAP = 0.15, 0.5
-local BAG_CAM_DOWN, BAG_HOVER, SELL_HOVER = 12, 6, 0
+local BAG_CAM_DOWN, SELL_HOVER = 12, 0
 local JIGGLE_PX, JIGGLE_STEPS = 3, 8
 local CLICK_COUNT, CLICK_DELAY = 3, 0.15
 
@@ -46,6 +50,55 @@ local function setCamera(down)
     pcall(function() cam.lookAt(camPos, target) end)
 end
 
+local function resetHumanoid()
+    local char = LP.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+end
+
+local function pinAt(pos, hover, duration)
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local target = CFrame.new(pos.X, pos.Y + hover, pos.Z)
+    local start = tick()
+    while tick() - start < duration do
+        pcall(function()
+            root.CFrame = target
+            root.Velocity = Vector3.new(0, 0, 0)
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end)
+        resetHumanoid()
+        wait()
+    end
+    return true
+end
+
+local function descend(pos, fromHover, duration, steps)
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    for i = 0, steps do
+        local a = i / steps
+        local h = fromHover * (1 - a)
+        pcall(function()
+            root.CFrame = CFrame.new(pos.X, pos.Y + h, pos.Z)
+            root.Velocity = Vector3.new(0, 0, 0)
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end)
+        resetHumanoid()
+        wait(duration / steps)
+    end
+end
+
+local function bagTeleport(pos)
+    if not pinAt(pos, BAG_HOVER, BAG_PIN) then return false end
+    descend(pos, BAG_HOVER, BAG_DESCEND, 30)
+    pinAt(pos, 0, GROUND_PIN)
+    return true
+end
+
 local function teleport(pos, settle, hover)
     local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if not root then return false end
@@ -53,12 +106,13 @@ local function teleport(pos, settle, hover)
     local ok = pcall(function() root.CFrame = target end)
     if not ok then return false end
     local start = tick()
-    while tick() - start < (settle or TP_SETTLE) do
+    while tick() - start < (settle or 1.0) do
         pcall(function()
             root.CFrame = target
             root.Velocity = Vector3.new(0, 0, 0)
             root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         end)
+        resetHumanoid()
         wait()
     end
     return true
@@ -88,19 +142,21 @@ local function jiggleClick(tx, ty)
 end
 
 local function doLocation(pos)
-    if not teleport(pos, TP_SETTLE, BAG_HOVER) then return end
-    wait(0.2)
+    if not bagTeleport(pos) then return end
     setCamera(BAG_CAM_DOWN)
     wait(PROMPT_WAIT)
     setCamera(BAG_CAM_DOWN)
     wait(PROMPT_WAIT)
+
     for i = 1, BAG_COUNT do
         if stopRequested then return end
+        pinAt(pos, 0, REPIN)
         keypress(VK_F)
         wait(HOLD_TIME)
         keyrelease(VK_F)
         if i < BAG_COUNT then wait(BETWEEN) end
     end
+
     if stopRequested then return end
     setCamera(0)
     wait(PROMPT_WAIT)
@@ -268,4 +324,3 @@ task.spawn(function()
         wait()
     end
 end)
-
